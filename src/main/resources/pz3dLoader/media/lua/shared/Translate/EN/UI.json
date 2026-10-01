@@ -1,0 +1,14 @@
+{
+  "UI_Pz3dLoader_STARTING": "Checking your mods...",
+  "UI_Pz3dLoader_DETECTED": "pz3d found - waiting for the game",
+  "UI_Pz3dLoader_UNSUPPORTED": "Please update Project Zomboid to 42.21 or newer to load pz3d",
+  "UI_Pz3dLoader_INCOMPATIBLE": "requires a different game version",
+  "UI_Pz3dLoader_DISABLED": "found, not active - enable in Mods",
+  "UI_Pz3dLoader_LOADING": "loading...",
+  "UI_Pz3dLoader_READY": "active",
+  "UI_Pz3dLoader_RESTART": "disabled - restart the game to unload",
+  "UI_Pz3dLoader_UPDATE": "restart to update Pz3dLoader",
+  "UI_Pz3dLoader_LEGACY": "ZombieBuddy is handling this version of pz3d",
+  "UI_Pz3dLoader_FAILED": "load failed - check console.txt",
+  "UI_Pz3dLoader_MISSING": "pz3d not found - install it from the Workshop"
+}

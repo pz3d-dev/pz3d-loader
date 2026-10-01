@@ -1,0 +1,92 @@
+plugins { id 'java' }
+
+repositories { mavenCentral() }
+dependencies {
+    implementation 'net.bytebuddy:byte-buddy:1.18.8'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.0'
+}
+
+version = (file('src/main/java/com/pavelvoronin/pz3dLoader/Version.java').text =~ /CURRENT = "([^"]+)"/)[0][1]
+sourceSets {
+    main.java.srcDirs = ['src/main/java', 'src/bootstrap/java']
+    test.java.srcDirs = ['tests/unit/java']
+    tools {
+        java.srcDirs = ['build-tools']
+        compileClasspath = configurations.runtimeClasspath
+        runtimeClasspath += configurations.runtimeClasspath
+    }
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
+    options.encoding = 'UTF-8'
+}
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+jar {
+    archiveFileName = 'pz3dLoader-unshaded.jar'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from { configurations.runtimeClasspath.collect { zipTree(it) } }
+    from('LICENSE.txt') { into 'META-INF'; rename { 'LICENSE-ZombieBuddy.txt' } }
+    exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA'
+    manifest.attributes(
+        'Premain-Class': 'com.pavelvoronin.pz3dLoader.Agent',
+        'Can-Retransform-Classes': 'true',
+        'Multi-Release': 'true',
+        'Implementation-Version': project.version
+    )
+}
+tasks.register('loaderJar', JavaExec) {
+    dependsOn jar, toolsClasses
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'Relocate'
+    inputs.file(tasks.jar.archiveFile)
+    outputs.file(layout.buildDirectory.file('pz3dLoader.jar'))
+    args tasks.jar.archiveFile.get().asFile, layout.buildDirectory.file('pz3dLoader.jar').get().asFile
+}
+tasks.register('bootstrapJar', Jar) {
+    dependsOn classes
+    archiveFileName = 'PZ3D-bootstrap-template.jar'
+    destinationDirectory = layout.buildDirectory
+    from(sourceSets.main.output) { include 'com/pavelvoronin/pz3dLoader/bootstrap/**' }
+}
+test { useJUnitPlatform() }
+tasks.register('panelPreview', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.pavelvoronin.pz3dLoader.PanelPreview'
+    systemProperty 'java.awt.headless', 'true'
+    args layout.buildDirectory.file('pz3dLoader-ui-preview.png').get().asFile
+}
+tasks.assemble.dependsOn loaderJar, bootstrapJar
+
+// Optional Windows bridge; the Java agent build works on every supported OS.
+tasks.register('nativeBridge') {
+    group = 'build'
+    description = 'Build pz3dLoader.dll with Zig on Windows.'
+    doLast {
+        if (!System.getProperty('os.name').toLowerCase().contains('windows')) {
+            throw new GradleException('The native bridge targets Windows; use the Java agent on other systems.')
+        }
+        def zigHome = layout.projectDirectory.dir('.cache/zig-x86_64-windows-0.15.2').asFile
+        def zig = new File(zigHome, 'zig.exe')
+        if (!zig.exists()) {
+            def zip = layout.projectDirectory.file('.cache/zig-0.15.2.zip').asFile
+            zip.parentFile.mkdirs()
+            if (!zip.exists()) {
+                new URI('https://ziglang.org/download/0.15.2/zig-x86_64-windows-0.15.2.zip').toURL().withInputStream { input -> zip.withOutputStream { it << input } }
+            }
+            def digest = java.security.MessageDigest.getInstance('SHA-256').digest(zip.bytes).encodeHex().toString()
+            if (digest != '3a0ed1e8799a2f8ce2a6e6290a9ff22e6906f8227865911fb7dde3cc14cb0c') throw new GradleException('Native compiler checksum mismatch')
+            ant.unzip(src: zip, dest: zip.parentFile)
+        }
+        def output = layout.buildDirectory.file('pz3dLoader.dll').get().asFile
+        output.parentFile.mkdirs()
+        def command = [zig.path, 'cc', '-target', 'x86_64-windows-gnu', '-shared', '-Os', '-Wall', '-Wextra', '-Wno-unused-parameter', '-Wno-cast-function-type-mismatch', '-fno-stack-protector', '-nostdlib', '-Wl,--entry,DllMain', '-isystem', new File(zigHome, 'lib/libc/include/any-windows-any').path, file('native/windows/pz3dLoader.c').path, '-lkernel32', '-o', output.path]
+        def process = new ProcessBuilder(command).inheritIO().start()
+        if (process.waitFor() != 0) throw new GradleException('Native compilation failed')
+    }
+}
