@@ -8,6 +8,7 @@ import java.util.*;
 import java.util.jar.JarFile;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
+
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public final class Agent {
@@ -17,7 +18,8 @@ public final class Agent {
     private static volatile Class<?> main;
     private static boolean initialized, attempted;
     private static Path jar;
-    private static boolean bootstrap, buddy;
+    private static boolean bootstrap, buddy, locallyEnabled;
+    private static String commonDirectory;
     public static volatile String status = "STARTING";
     public static volatile String modVersion = "";
     public static volatile String failure = "";
@@ -27,8 +29,9 @@ public final class Agent {
         initialized = true;
         buddy = StartupAgents.hasZombieBuddy(ManagementFactory.getRuntimeMXBean().getInputArguments());
         g_instrumentation = instrumentation;
-        LoaderUi.install(instrumentation);
+        if (!RuntimeRole.serverCommand()) LoaderUi.install(instrumentation);
         try {
+            var hostLaunch = HostServerLauncher.substitution();
             if (arguments != null && !arguments.isBlank()) throw new IllegalArgumentException("Pz3dLoader takes no agent options; enable pz3d in the game");
             new AgentBuilder.Default().disableClassFormatChanges()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
@@ -37,6 +40,8 @@ public final class Agent {
                 .transform((builder,type,loader,module,domain) -> builder.visit(Advice.to(ModListHook.class).on(named("loadMods").and(takesArguments(List.class)))))
                 .type(named("zombie.Lua.LuaManager$Exposer"))
                 .transform((builder,type,loader,module,domain) -> builder.visit(Advice.to(ExposeHook.class).on(named("exposeAll").and(takesArguments(0)))))
+                .type(named("zombie.network.CoopMaster"))
+                .transform((builder,type,loader,module,domain) -> builder.visit(hostLaunch))
                 .installOn(instrumentation);
             System.out.println("[pz3d Loader] Waiting for enabled pz3d mod");
         } catch (Exception error) { failed(error); }
@@ -57,10 +62,15 @@ public final class Agent {
 
     public static void loadIfEnabled(List<String> mods) throws Exception {
         if (!GameCompatibility.check()) return;
+        boolean server = RuntimeRole.server(), client = !server && RuntimeRole.client();
+        boolean enabled = mods.contains("pz3d") || RuntimeRole.optionalServer(server);
         synchronized (Agent.class) {
             if (attempted || Set.of("FAILED","LEGACY","READY").contains(status)) {
-                if (status.equals("READY") && !mods.contains("pz3d")) status="RESTART";
-                else if (status.equals("RESTART") && mods.contains("pz3d")) status="READY";
+                if (!server && !client) locallyEnabled = mods.contains("pz3d");
+                boolean retained = RuntimeRole.retainLocal(server,client,locallyEnabled);
+                if (status.equals("READY") && !enabled && !retained) status="RESTART";
+                else if (status.equals("RESTART") && (enabled || retained)) status="READY";
+                if (main != null && !server) configureClient(main);
                 return;
             }
             try {
@@ -71,12 +81,14 @@ public final class Agent {
                 modVersion = detectedVersion != null && detectedVersion.matches("[A-Za-z0-9.+_-]{1,40}") ? detectedVersion : "?";
                 SelfUpdater.discover(selected);
                 if(!(boolean)selected.getClass().getMethod("isAvailableSelf").invoke(selected)) { status="INCOMPATIBLE"; return; }
-                if (!mods.contains("pz3d")) { status = "DISABLED"; return; }
+                if (!enabled) { status = "DISABLED"; return; }
                 attempted = true;
+                locallyEnabled = !server && !client;
                 selected = chooser.getMethod("getAvailableModDetails",String.class).invoke(null,"pz3d");
                 if (selected == null) throw new IllegalStateException("Enabled PZ3D package is unavailable");
                 String version = (String)selected.getClass().getMethod("getVersionDir").invoke(selected);
                 String common = (String)selected.getClass().getMethod("getCommonDir").invoke(selected);
+                commonDirectory = common;
                 SelectedMod.Package found = SelectedMod.resolve(version == null ? null : Path.of(version), common == null ? null : Path.of(common));
                 jar = found.jar();
                 try (JarFile file = new JarFile(jar.toFile())) {
@@ -134,17 +146,26 @@ public final class Agent {
         },"Pz3dLoader-cleanup"));
         g_instrumentation.appendToSystemClassLoaderSearch(loadedJar);
         ClassLoader loader = ClassLoader.getSystemClassLoader();
-        Class<?> candidate = Class.forName("com.pavelvoronin.pz3d.Main",false,loader);
+        boolean server = RuntimeRole.server();
+        Class<?> candidate = Class.forName(RuntimeRole.entry(server),false,loader);
+        if (!server) configureClient(candidate);
         candidate.getMethod("main",String[].class).invoke(null,(Object)new String[0]);
-        PatchEngine.install(g_instrumentation,Class.forName("com.pavelvoronin.pz3d.Patches",false,loader));
+        PatchEngine.install(g_instrumentation,Class.forName(RuntimeRole.patches(server),false,loader));
         main = candidate;
         expose();
         status = "READY";
         System.out.println("[pz3d Loader] PZ3D initialized");
     }
 
+    private static void configureClient(Class<?> entry) throws Exception {
+        if (commonDirectory == null) return;
+        try { entry.getMethod("configureClient",String.class,boolean.class).invoke(null,commonDirectory,locallyEnabled); }
+        catch (NoSuchMethodException olderCore) { /* Preserve compatibility with released SP cores. */ }
+    }
+
     /** Uses the game's native Lua exposer, with the same alias as ZombieBuddy. */
     public static synchronized void expose() throws Exception {
+        if (RuntimeRole.server()) return;
 
         Class<?> lua = Class.forName("zombie.Lua.LuaManager");
         Object exposer = lua.getField("exposer").get(null);

@@ -72,7 +72,7 @@ public final class Pz3dAdapter {
                 expanded += bytes.length;
                 if (bytes.length > 64 * 1024 * 1024 || expanded > 512L * 1024 * 1024) throw new IOException("Oversized PZ3D archive");
                 if (name.endsWith(".class")) {
-                    if (!name.startsWith("com/pavelvoronin/pz3d/")) throw new IOException("Foreign class in PZ3D archive: " + name);
+                    if (!name.startsWith("com/pavelvoronin/pz3d/") && !name.matches("com/pavelvoronin/pz3dserver/ServerPatches(?:\\$[A-Za-z0-9_]+)?\\.class")) throw new IOException("Foreign class in PZ3D archive: " + name);
                     bytes = adaptClass(bytes);
                 }
                 if (entries.putIfAbsent(name,bytes) != null) throw new IOException("Duplicate JAR entry: " + name);
