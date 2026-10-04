@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Register public native pz3d camera permissions before the server reads and rewrites its INI; keep server restrictions available without requiring client mods.
+
 - Use Gradle for builds and CI; keep portable tests under `tests/` and local environment tooling outside the repository.
 
 ## 1.0.1

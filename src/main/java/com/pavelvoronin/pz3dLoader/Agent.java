@@ -42,6 +42,8 @@ public final class Agent {
                 .transform((builder,type,loader,module,domain) -> builder.visit(Advice.to(ExposeHook.class).on(named("exposeAll").and(takesArguments(0)))))
                 .type(named("zombie.network.CoopMaster"))
                 .transform((builder,type,loader,module,domain) -> builder.visit(hostLaunch))
+                .type(named("zombie.network.ServerOptions"))
+                .transform((builder,type,loader,module,domain) -> builder.visit(Advice.to(ViewOptionsConstructor.class).on(isConstructor())).visit(Advice.to(ViewOptionsInit.class).on(named("init").and(takesArguments(0)))))
                 .installOn(instrumentation);
             System.out.println("[pz3d Loader] Waiting for enabled pz3d mod");
         } catch (Exception error) { failed(error); }
@@ -54,6 +56,14 @@ public final class Agent {
     }
     public static class ExposeHook {
         @Advice.OnMethodExit public static void exit() throws Exception { Agent.expose(); }
+    }
+
+    public static class ViewOptionsConstructor {
+        @Advice.OnMethodExit public static void exit(@Advice.This Object options) throws Exception { ViewOptions.register(options); }
+    }
+    public static class ViewOptionsInit {
+        // PZ reads and rewrites the server INI before enabled Java mods start.
+        @Advice.OnMethodEnter public static void enter(@Advice.This Object options) throws Exception { ViewOptions.register(options); }
     }
 
     public static void loadNativeMods(List<String> mods) throws Exception {
