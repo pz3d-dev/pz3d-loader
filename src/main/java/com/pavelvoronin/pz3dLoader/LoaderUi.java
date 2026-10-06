@@ -44,8 +44,7 @@ public final class LoaderUi {
             if(height<=0)return;
             long now=System.nanoTime();
             if(now>=nextMeasure){measureBuddy(width,height);nextMeasure=now+250_000_000L;}
-            String state=Agent.status;
-            if(com.pavelvoronin.pz3dLoader.bootstrap.Main.state().equals("FAILED"))state="FAILED";
+            String state=displayStatus(Agent.status,com.pavelvoronin.pz3dLoader.bootstrap.Main.state(),retainedClient());
             String key="UI_Pz3dLoader_"+state;
             String message=canvas.translation(key);
             // Native catalogs may have been rebuilt before our hook was installed.
@@ -56,6 +55,16 @@ public final class LoaderUi {
         } catch(Throwable error) {
             disabled=true;System.err.println("[pz3d Loader] Indicator unavailable: "+error);
         }
+    }
+    static String displayStatus(String state,String bootstrap,boolean retained){
+        if(bootstrap.equals("FAILED"))return "FAILED";
+        return state.equals("RESTART")&&bootstrap.equals("READY")&&retained?"READY":state;
+    }
+    private static boolean retainedClient(){
+        try{
+            var core=Class.forName("com.pavelvoronin.pz3d.Main",false,ClassLoader.getSystemClassLoader());
+            return Boolean.TRUE.equals(core.getMethod("localClientActive").invoke(null));
+        }catch(ReflectiveOperationException unavailable){return false;}
     }
     private static void measureBuddy(int width,int lineHeight) throws Exception {
         buddyBottom=0;right=false;

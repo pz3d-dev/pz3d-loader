@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show an active local multiplayer client correctly when the server replaces its native mod list; preserve real disabled and failed states without changing startup or ownership.
+
 - Register public native pz3d camera permissions before the server reads and rewrites its INI; keep server restrictions available without requiring client mods.
 
 - Use Gradle for builds and CI; keep portable tests under `tests/` and local environment tooling outside the repository.
