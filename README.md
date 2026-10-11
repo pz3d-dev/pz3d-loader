@@ -1,9 +1,7 @@
-# pz3d Loader
+# pz3d Loader — Deprecated
 
-A fork of [ZombieBuddy](https://github.com/zed-0xff/ZombieBuddy), made to load the Java engine behind the pz3d mod for Project Zomboid.
+This project is deprecated and no longer maintained. [ZombieBuddy](https://github.com/zed-0xff/ZombieBuddy) is working again, so a separate pz3d loader is no longer needed. Please use ZombieBuddy instead.
 
-It finds pz3d among your enabled mods, checks its signature before loading, and shows its status in the main menu. You can keep ZombieBuddy installed alongside it.
+This was a fork of ZombieBuddy, made to load the Java engine behind the pz3d mod for Project Zomboid. The source remains available for reference.
 
-Install it once; signed loader updates come with the mod. Supports Project Zomboid 42.21 and newer. Windows can use the native DLL or Java agent; Linux uses the Java agent.
-
-[Installation guide](https://pz3d.dev/install) · [MIT license](LICENSE.txt)
+[MIT license](LICENSE.txt)
